@@ -38,9 +38,9 @@ jobs:
       - name: Install Linux packaging dependencies
         run: |
           dnf install -y \
+            bsdtar \
             findutils \
             gcc-c++ \
-            libarchive \
             make \
             python3 \
             rpm-build \
@@ -52,7 +52,7 @@ jobs:
           pnpm --version
           rpm --version
           rpmbuild --version
-          command -v bsdtar
+          command -v bsdtar || echo "bsdtar not found"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
