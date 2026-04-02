@@ -17,6 +17,8 @@ out/
 /dist/
 **/dist/
 **/build/
+/release/
+/*.tar.gz
 
 # Production
 *.production
@@ -85,6 +87,7 @@ yarn.lock
 *.crt
 
 .kiro
+.codex
 .vscode
 .serena
 .specstory

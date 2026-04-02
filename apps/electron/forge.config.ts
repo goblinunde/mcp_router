@@ -31,12 +31,43 @@ const hasNotarizeCreds = !!(
 );
 const appDescription =
   "Effortlessly manage your MCP servers with MCP Router. MCP Router provides a user-friendly interface for organizing and operating MCP servers.";
+const linuxDesktopFileName = "mcp-router.desktop";
+const linuxIconName = "mcp-router";
 
 function renameRpm(dest: string): string {
   return path.join(
     dest,
     '<%= name %>-<%= version %>-<%= revision %>.<%= arch === "aarch64" ? "arm64" : arch %>.rpm',
   );
+}
+
+function patchFedoraSpec(specPath: string): void {
+  const installSectionNeedle = "cp -r usr/* %{buildroot}/usr/";
+  const installSectionReplacement = [
+    "cp -r ../usr/* %{buildroot}/usr/",
+    "",
+    "# Install the launcher icon into the standard hicolor theme directory",
+    "# so Fedora/GNOME can resolve it reliably from the desktop entry.",
+    `install -d %{buildroot}/usr/share/icons/hicolor/512x512/apps`,
+    `cp %{buildroot}/usr/share/pixmaps/${linuxIconName}.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/${linuxIconName}.png`,
+    "",
+    "# Ensure the running Electron window matches the desktop file on Linux.",
+    `if ! grep -q '^StartupWMClass=' %{buildroot}/usr/share/applications/${linuxDesktopFileName}; then`,
+    `  sed -i '/^Icon=/a StartupWMClass=MCP Router' %{buildroot}/usr/share/applications/${linuxDesktopFileName}`,
+    "fi",
+  ].join("\n");
+
+  const originalSpecContents = fs.readFileSync(specPath, "utf8");
+  if (!originalSpecContents.includes(installSectionNeedle)) {
+    throw new Error(`Unexpected RPM spec format: ${specPath}`);
+  }
+
+  const patchedSpecContents = originalSpecContents.replace(
+    installSectionNeedle,
+    installSectionReplacement,
+  );
+
+  fs.writeFileSync(specPath, patchedSpecContents);
 }
 
 const resolveElectronZipDir = () => {
@@ -92,13 +123,9 @@ class FedoraMakerRpm extends MakerRpm {
     await installer.createContents();
 
     // Fedora 43's rpmbuild recreates BUILD/<name>-<version>-build before %install.
-    // Point the spec at the sibling BUILD/usr tree that electron-installer-redhat stages.
-    const specPath = installer.specPath;
-    const specContents = fs.readFileSync(specPath, "utf8").replace(
-      "cp -r usr/* %{buildroot}/usr/",
-      "cp -r ../usr/* %{buildroot}/usr/",
-    );
-    fs.writeFileSync(specPath, specContents);
+    // Point the spec at the sibling BUILD/usr tree that electron-installer-redhat stages,
+    // then add the desktop integration tweaks Fedora expects.
+    patchFedoraSpec(installer.specPath);
 
     await installer.createPackage();
     await installer.movePackage();

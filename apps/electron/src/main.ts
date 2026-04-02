@@ -1,5 +1,6 @@
 import { app, BrowserWindow, session, shell, nativeTheme } from "electron";
 import path from "node:path";
+import linuxWindowIcon from "../public/images/icon/icon.png";
 import { MCPServerManager } from "@/main/modules/mcp-server-manager/mcp-server-manager";
 import { AggregatorServer } from "@/main/modules/mcp-server-runtime/aggregator-server";
 import { MCPHttpServer } from "@/main/modules/mcp-server-runtime/http/mcp-http-server";
@@ -27,6 +28,7 @@ import { getSkillService } from "@/main/modules/skills/skills.service";
 if (process.platform === "linux") {
   // Electron 36 can crash on some Fedora/GNOME setups if GTK4 gets selected.
   app.commandLine.appendSwitch("gtk-version", "3");
+  app.setDesktopName("mcp-router.desktop");
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -103,7 +105,7 @@ const createWindow = ({ showOnCreate = true }: CreateWindowOptions = {}) => {
     minWidth: 800,
     minHeight: 600,
     title: "MCP Router",
-    icon: path.join(__dirname, "assets/icon.png"),
+    icon: process.platform === "linux" ? linuxWindowIcon : undefined,
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
