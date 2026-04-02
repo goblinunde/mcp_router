@@ -39,7 +39,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Read application version
-        run: echo "APP_VERSION=$(node -p \"require('./apps/electron/package.json').version\")" >> "$GITHUB_ENV"
+        shell: bash
+        run: |
+          APP_VERSION="$(node -p 'require("./apps/electron/package.json").version')"
+          echo "APP_VERSION=${APP_VERSION}" >> "$GITHUB_ENV"
 
       - name: Validate release tag
         if: startsWith(github.ref, 'refs/tags/')
