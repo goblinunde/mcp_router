@@ -1,0 +1,19 @@
+version: "1"
+roles:
+  - name: "admin"
+    workspaceId: "local-default"
+    permissions:
+      - "tool.list"
+      - "tool.invoke"
+      - "server.list"
+      - "server.start"
+      - "server.stop"
+      - "server.configure"
+      - "admin.manageTokens"
+      - "admin.manageUsers"
+      - "admin.manageWorkspaces"
+  - name: "viewer"
+    workspaceId: "local-default"
+    permissions:
+      - "tool.list"
+      - "server.list"

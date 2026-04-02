@@ -7,6 +7,8 @@ import fs from "fs/promises";
 import { v4 as uuidv4 } from "uuid";
 import * as fsSync from "fs";
 import type { Workspace, WorkspaceCreateConfig } from "@mcp_router/shared";
+import { getVaultService } from "@/main/infrastructure/vault/vault.service";
+import { isVaultReference } from "@/main/infrastructure/vault/vault-ref";
 
 export class WorkspaceService extends SingletonService<
   Workspace,
@@ -517,13 +519,45 @@ export class WorkspaceService extends SingletonService<
   }
 
   private deserializeWorkspace(row: any): Workspace {
+    const remoteConfig = row.remoteConfig
+      ? JSON.parse(row.remoteConfig)
+      : undefined;
+    if (remoteConfig?.authToken) {
+      const vault = getVaultService();
+      const migratedReference = vault.migratePlaintextSecret(
+        remoteConfig.authToken,
+        {
+          workspaceId: row.id,
+          ownerType: "workspace-auth",
+          ownerId: row.id,
+          secretType: "workspace-auth-token",
+        },
+      );
+
+      if (migratedReference && migratedReference !== remoteConfig.authToken) {
+        remoteConfig.authToken = migratedReference;
+        this.metaDb
+          ?.prepare("UPDATE workspaces SET remoteConfig = ? WHERE id = ?")
+          .run(JSON.stringify(remoteConfig), row.id);
+      }
+
+      if (isVaultReference(remoteConfig.authToken)) {
+        remoteConfig.authToken =
+          vault.resolveSecret(remoteConfig.authToken, {
+            workspaceId: row.id,
+            ownerType: "workspace-auth",
+            ownerId: row.id,
+          }) || undefined;
+      }
+    }
+
     return {
       id: row.id,
       name: row.name,
       type: row.type,
       isActive: row.isActive === 1,
       localConfig: row.localConfig ? JSON.parse(row.localConfig) : undefined,
-      remoteConfig: row.remoteConfig ? JSON.parse(row.remoteConfig) : undefined,
+      remoteConfig,
       displayInfo: row.displayInfo ? JSON.parse(row.displayInfo) : undefined,
       createdAt: new Date(row.createdAt),
       lastUsedAt: new Date(row.lastUsedAt),

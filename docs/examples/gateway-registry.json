@@ -1,0 +1,21 @@
+{
+  "packages": [
+    {
+      "id": "docs-index",
+      "name": "Docs Index Server",
+      "version": "0.1.0",
+      "description": "Indexes local documentation and exposes search/document tools.",
+      "author": "MCP Router",
+      "homepage": "https://github.com/goblinunde/mcp_router",
+      "entry": "servers/docs-index/index.js",
+      "requestedPermissions": [
+        {
+          "scope": "tool.invoke",
+          "description": "Allows document search and read operations."
+        }
+      ],
+      "capabilities": ["documents", "search"],
+      "tags": ["docs", "local"]
+    }
+  ]
+}

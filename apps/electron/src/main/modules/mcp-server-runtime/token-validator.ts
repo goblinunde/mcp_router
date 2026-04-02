@@ -1,9 +1,15 @@
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { TokenManager } from "@/main/modules/mcp-apps-manager/token-manager";
-import { TokenServerAccess } from "@mcp_router/shared";
+import type {
+  GatewayAuthContext,
+  TokenServerAccess,
+  TokenValidationResult,
+} from "@mcp_router/shared";
+import { getGatewaySecurityService } from "../gateway/gateway-security.service";
 
 export class TokenValidator {
   private tokenManager: TokenManager;
+  private gatewaySecurity = getGatewaySecurityService();
   private serverNameToIdMap: Map<string, string>;
 
   constructor(serverNameToIdMap: Map<string, string>) {
@@ -27,13 +33,16 @@ export class TokenValidator {
   public validateTokenAndAccess(
     token: string | undefined,
     serverName: string,
+    options?: { workspaceId?: string | null },
   ): string {
-    // 通常の認証ロジック
     if (!token || typeof token !== "string") {
       throw new McpError(ErrorCode.InvalidRequest, "Token is required");
     }
 
-    const validation = this.tokenManager.validateToken(token);
+    const validation = this.tokenManager.validateToken(
+      token,
+      options?.workspaceId,
+    );
     if (!validation.isValid) {
       throw new McpError(
         ErrorCode.InvalidRequest,
@@ -68,11 +77,44 @@ export class TokenValidator {
     return this.tokenManager.hasServerAccess(token, serverId);
   }
 
+  public hasServerAccessContext(
+    authContext: GatewayAuthContext,
+    serverId: string,
+  ): boolean {
+    return this.gatewaySecurity.canAccessServer(authContext, serverId);
+  }
+
   /**
    * Validate a token
    */
-  public validateToken(token: string): any {
-    return this.tokenManager.validateToken(token);
+  public validateToken(
+    token: string,
+    workspaceId?: string | null,
+  ): TokenValidationResult {
+    return this.tokenManager.validateToken(token, workspaceId);
+  }
+
+  public resolveAuthContext(
+    token: string,
+    workspaceId?: string | null,
+  ): GatewayAuthContext | null {
+    return this.gatewaySecurity.resolveAuthContext(token, workspaceId);
+  }
+
+  public canListTool(
+    authContext: GatewayAuthContext,
+    serverId: string,
+    toolName: string,
+  ): boolean {
+    return this.gatewaySecurity.canListTool(authContext, serverId, toolName);
+  }
+
+  public canInvokeTool(
+    authContext: GatewayAuthContext,
+    serverId: string,
+    toolName: string,
+  ): boolean {
+    return this.gatewaySecurity.canInvokeTool(authContext, serverId, toolName);
   }
 
   /**

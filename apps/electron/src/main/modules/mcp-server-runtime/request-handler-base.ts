@@ -1,6 +1,7 @@
 import { TokenValidator } from "./token-validator";
 import { getLogService } from "@/main/modules/mcp-logger/mcp-logger.service";
 import { McpManagerRequestLogEntry as RequestLogEntry } from "@mcp_router/shared";
+import type { GatewayAuthContext } from "@mcp_router/shared";
 
 /**
  * Base class for request handlers with common error handling patterns
@@ -15,10 +16,8 @@ export abstract class RequestHandlerBase {
   /**
    * Extract client ID from token
    */
-  protected getClientId(token?: string): string {
-    return token
-      ? this.tokenValidator.validateToken(token).clientId || "unknownClient"
-      : "unknownClient";
+  protected getClientId(authContext?: GatewayAuthContext): string {
+    return authContext?.clientId || "unknownClient";
   }
 
   /**

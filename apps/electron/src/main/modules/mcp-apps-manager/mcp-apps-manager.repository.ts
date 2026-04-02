@@ -1,5 +1,5 @@
 import { Token, TokenServerAccess } from "@mcp_router/shared";
-import { getSharedConfigManager } from "../../infrastructure/shared-config-manager";
+import { getGatewaySecurityService } from "../gateway/gateway-security.service";
 
 /**
  * トークン用リポジトリクラス
@@ -38,23 +38,29 @@ export class McpAppsManagerRepository {
    * トークンを取得
    */
   public getToken(id: string): Token | null {
-    const manager = getSharedConfigManager();
-    const token = manager.getToken(id);
-    return token || null;
+    return getGatewaySecurityService().getToken(id);
   }
 
   /**
    * トークンを保存
    */
   public saveToken(token: Token): void {
-    getSharedConfigManager().saveToken(token);
+    getGatewaySecurityService().createToken({
+      clientId: token.clientId,
+      serverAccess: token.serverAccess || {},
+      userId: token.userId,
+      workspaceScope: token.workspaceScope,
+      toolScope: token.toolScope,
+      roleNames: token.roleNames,
+      legacyCompat: token.legacyCompat,
+    });
   }
 
   /**
    * トークンをリスト表示
    */
   public listTokens(): Token[] {
-    return getSharedConfigManager().getTokens();
+    return getGatewaySecurityService().listTokens();
   }
 
   /**
@@ -62,8 +68,7 @@ export class McpAppsManagerRepository {
    */
   public deleteToken(id: string): boolean {
     try {
-      getSharedConfigManager().deleteToken(id);
-      return true;
+      return getGatewaySecurityService().deleteToken(id);
     } catch (error) {
       console.error(`トークン${id}の削除中にエラーが発生しました:`, error);
       return false;
@@ -75,10 +80,7 @@ export class McpAppsManagerRepository {
    */
   public deleteClientTokens(clientId: string): number {
     try {
-      const manager = getSharedConfigManager();
-      const beforeCount = manager.getTokensByClientId(clientId).length;
-      manager.deleteClientTokens(clientId);
-      return beforeCount;
+      return getGatewaySecurityService().deleteClientTokens(clientId);
     } catch (error) {
       console.error(
         `クライアント${clientId}のトークン削除中にエラーが発生しました:`,
@@ -96,8 +98,10 @@ export class McpAppsManagerRepository {
     serverAccess: TokenServerAccess,
   ): boolean {
     try {
-      getSharedConfigManager().updateTokenServerAccess(id, serverAccess);
-      return true;
+      return getGatewaySecurityService().updateTokenServerAccess(
+        id,
+        serverAccess,
+      );
     } catch (error) {
       console.error(`トークン${id}の更新中にエラーが発生しました:`, error);
       return false;
@@ -109,7 +113,9 @@ export class McpAppsManagerRepository {
    */
   public getTokensByClientId(clientId: string): Token[] {
     try {
-      return getSharedConfigManager().getTokensByClientId(clientId);
+      return getGatewaySecurityService()
+        .listTokens()
+        .filter((token) => token.clientId === clientId);
     } catch (error) {
       console.error(
         `クライアントID ${clientId} のトークン取得中にエラーが発生しました:`,
@@ -121,8 +127,7 @@ export class McpAppsManagerRepository {
 
   // BaseRepositoryとの互換性のためのメソッド
   public getById(id: string): Token | undefined {
-    const manager = getSharedConfigManager();
-    return manager.getToken(id);
+    return getGatewaySecurityService().getToken(id) || undefined;
   }
 
   public getAll(): Token[] {

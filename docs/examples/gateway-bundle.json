@@ -1,0 +1,34 @@
+{
+  "version": "1",
+  "workspaces": [
+    {
+      "id": "local-default",
+      "name": "Local Default",
+      "defaultRoutingMode": "gateway"
+    }
+  ],
+  "roles": [
+    {
+      "name": "developer",
+      "workspaceId": "local-default",
+      "permissions": ["tool.list", "tool.invoke", "server.list"]
+    }
+  ],
+  "routingRules": [
+    {
+      "id": "code-default",
+      "match": {
+        "intents": ["code", "refactor"],
+        "capabilities": ["code"]
+      },
+      "preferServerIds": ["filesystem", "github"],
+      "fallbackServerIds": ["docs-index"]
+    }
+  ],
+  "registrySources": [
+    {
+      "type": "file",
+      "path": "./docs/examples/gateway-registry.json"
+    }
+  ]
+}

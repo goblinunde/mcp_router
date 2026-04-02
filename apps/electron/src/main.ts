@@ -1,5 +1,4 @@
 import { app, BrowserWindow, session, shell, nativeTheme } from "electron";
-import path from "node:path";
 import linuxWindowIcon from "../public/images/icon/icon.png";
 import { MCPServerManager } from "@/main/modules/mcp-server-manager/mcp-server-manager";
 import { AggregatorServer } from "@/main/modules/mcp-server-runtime/aggregator-server";
@@ -18,6 +17,7 @@ import { resolveAutoUpdateConfig } from "./main/modules/system/app-updator";
 import { getIsAutoUpdateInProgress } from "./main/modules/system/system-handler";
 import { initializeEnvironment, isDevelopment } from "@/main/utils/environment";
 import { getCloudSyncService } from "@/main/modules/cloud-sync/cloud-sync.service";
+import { getGatewaySecurityService } from "@/main/modules/gateway/gateway-security.service";
 import {
   applyLoginItemSettings,
   applyThemeSettings,
@@ -251,6 +251,8 @@ async function initDatabase(): Promise<void> {
       // デフォルトワークスペースがない場合は作成
       await workspaceService.switchWorkspace("local-default");
     }
+
+    getGatewaySecurityService().initialize();
 
     // ワークスペース固有のデータベースのマイグレーションは
     // PlatformAPIManagerが初期化時に実行する

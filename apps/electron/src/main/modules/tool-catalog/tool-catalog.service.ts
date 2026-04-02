@@ -29,6 +29,7 @@ type SearchContext = {
   projectId: string | null;
   allowedServerIds?: Set<string>;
   toolCatalogEnabled?: boolean;
+  toolAccessChecker?: (serverId: string, toolName: string) => boolean;
 };
 
 const DEFAULT_MAX_RESULTS = 20;
@@ -121,6 +122,13 @@ export class ToolCatalogService {
 
         for (const tool of toolList) {
           if (permissions[tool.name] === false) {
+            continue;
+          }
+
+          if (
+            context.toolAccessChecker &&
+            !context.toolAccessChecker(serverId, tool.name)
+          ) {
             continue;
           }
 

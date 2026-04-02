@@ -1,0 +1,26 @@
+version: "1"
+workspaces:
+  - id: "local-default"
+    name: "Local Default"
+    defaultRoutingMode: "gateway"
+roles:
+  - name: "developer"
+    workspaceId: "local-default"
+    permissions:
+      - "tool.list"
+      - "tool.invoke"
+      - "server.list"
+registrySources:
+  - type: "file"
+    path: "./docs/examples/gateway-registry.json"
+routingRules:
+  - id: "workspace-default"
+    match:
+      workspaceIds:
+        - "local-default"
+      capabilities:
+        - "documents"
+    preferServerIds:
+      - "docs-index"
+    fallbackServerIds:
+      - "filesystem"

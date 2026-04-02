@@ -4,6 +4,8 @@ import {
   getSqliteManager,
 } from "../../infrastructure/database/sqlite-manager";
 import { Workspace } from "@mcp_router/shared";
+import { getVaultService } from "@/main/infrastructure/vault/vault.service";
+import { isVaultReference } from "@/main/infrastructure/vault/vault-ref";
 
 export class WorkspaceRepository extends BaseRepository<Workspace> {
   private static instance: WorkspaceRepository | null = null;
@@ -86,6 +88,18 @@ export class WorkspaceRepository extends BaseRepository<Workspace> {
    * データベースから取得したレコードをWorkspaceオブジェクトに変換
    */
   protected mapRowToEntity(row: any): Workspace {
+    const remoteConfig = row.remoteConfig
+      ? JSON.parse(row.remoteConfig)
+      : undefined;
+    if (remoteConfig?.authToken && isVaultReference(remoteConfig.authToken)) {
+      remoteConfig.authToken =
+        getVaultService().resolveSecret(remoteConfig.authToken, {
+          workspaceId: row.id,
+          ownerType: "workspace-auth",
+          ownerId: row.id,
+        }) || undefined;
+    }
+
     return {
       id: row.id,
       name: row.name,
@@ -94,7 +108,7 @@ export class WorkspaceRepository extends BaseRepository<Workspace> {
       createdAt: new Date(row.createdAt),
       lastUsedAt: new Date(row.lastUsedAt),
       localConfig: row.localConfig ? JSON.parse(row.localConfig) : undefined,
-      remoteConfig: row.remoteConfig ? JSON.parse(row.remoteConfig) : undefined,
+      remoteConfig,
       displayInfo: row.displayInfo ? JSON.parse(row.displayInfo) : undefined,
     };
   }
@@ -157,7 +171,15 @@ export class WorkspaceRepository extends BaseRepository<Workspace> {
     }
 
     const remoteConfig: any = workspace.remoteConfig || {};
-    remoteConfig.authToken = encryptedToken.toString("base64");
+    remoteConfig.authToken = getVaultService().storeSecret(
+      encryptedToken.toString("base64"),
+      {
+        workspaceId,
+        ownerType: "workspace-auth",
+        ownerId: workspaceId,
+        secretType: "workspace-auth-token",
+      },
+    );
 
     this.db.execute(
       "UPDATE workspaces SET remoteConfig = :remoteConfig WHERE id = :id",
@@ -177,6 +199,15 @@ export class WorkspaceRepository extends BaseRepository<Workspace> {
       return null;
     }
 
-    return workspace.remoteConfig.authToken || null;
+    const authToken = workspace.remoteConfig.authToken;
+    if (!authToken) {
+      return null;
+    }
+
+    return getVaultService().resolveSecret(authToken, {
+      workspaceId,
+      ownerType: "workspace-auth",
+      ownerId: workspaceId,
+    });
   }
 }

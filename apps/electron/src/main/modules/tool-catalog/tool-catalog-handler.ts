@@ -3,6 +3,7 @@ import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   AGGREGATOR_SERVER_NAME,
+  type GatewayAuthContext,
   MCPServer,
   MCPTool,
   UNASSIGNED_PROJECT_ID,
@@ -110,23 +111,14 @@ export class ToolCatalogHandler extends RequestHandlerBase {
     return null;
   }
 
-  private requireValidToken(token?: string): {
-    token: string;
-    clientId: string;
-  } {
-    if (!token || typeof token !== "string") {
+  private requireAuthContext(
+    authContext?: GatewayAuthContext,
+  ): GatewayAuthContext {
+    if (!authContext) {
       throw new McpError(ErrorCode.InvalidRequest, "Token is required");
     }
 
-    const validation = this.tokenValidator.validateToken(token);
-    if (!validation.isValid) {
-      throw new McpError(
-        ErrorCode.InvalidRequest,
-        validation.error || "Invalid token",
-      );
-    }
-
-    return { token, clientId: validation.clientId || "unknownClient" };
+    return authContext;
   }
 
   private parseToolKey(toolKey: string): {
@@ -199,9 +191,11 @@ export class ToolCatalogHandler extends RequestHandlerBase {
    * Handle tool_discovery request.
    */
   public async handleToolDiscovery(request: any): Promise<any> {
-    const token = request.params._meta?.token as string | undefined;
+    const authContext = this.requireAuthContext(
+      request.params._meta?.gateway as GatewayAuthContext | undefined,
+    );
     const projectId = this.normalizeProjectId(request.params._meta?.projectId);
-    const { clientId, token: validatedToken } = this.requireValidToken(token);
+    const clientId = this.getClientId(authContext);
 
     const args = request.params.arguments || {};
     const rawQuery = args.query;
@@ -226,7 +220,9 @@ export class ToolCatalogHandler extends RequestHandlerBase {
       async () => {
         const allowedServerIds = new Set<string>();
         for (const serverId of this.servers.keys()) {
-          if (this.tokenValidator.hasServerAccess(validatedToken, serverId)) {
+          if (
+            this.tokenValidator.hasServerAccessContext(authContext, serverId)
+          ) {
             allowedServerIds.add(serverId);
           }
         }
@@ -237,6 +233,8 @@ export class ToolCatalogHandler extends RequestHandlerBase {
             projectId,
             allowedServerIds,
             toolCatalogEnabled: !!optimization,
+            toolAccessChecker: (serverId, toolName) =>
+              this.tokenValidator.canListTool(authContext, serverId, toolName),
           },
         );
 
@@ -265,9 +263,11 @@ export class ToolCatalogHandler extends RequestHandlerBase {
    * Handle tool_execute request.
    */
   public async handleToolExecute(request: any): Promise<any> {
-    const token = request.params._meta?.token as string | undefined;
+    const authContext = this.requireAuthContext(
+      request.params._meta?.gateway as GatewayAuthContext | undefined,
+    );
     const projectId = this.normalizeProjectId(request.params._meta?.projectId);
-    const { clientId, token: validatedToken } = this.requireValidToken(token);
+    const clientId = this.getClientId(authContext);
 
     const args = request.params.arguments || {};
     const toolKey = typeof args.toolKey === "string" ? args.toolKey.trim() : "";
@@ -286,10 +286,10 @@ export class ToolCatalogHandler extends RequestHandlerBase {
 
     const serverName = server.name || serverId;
 
-    if (!this.tokenValidator.hasServerAccess(validatedToken, serverId)) {
+    if (!this.tokenValidator.canInvokeTool(authContext, serverId, toolName)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        "Token does not have access to this server",
+        "Token does not have permission to invoke this tool",
       );
     }
 

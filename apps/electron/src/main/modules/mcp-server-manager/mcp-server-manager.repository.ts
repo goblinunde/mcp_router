@@ -9,6 +9,8 @@ import {
   MCPServerHealthCheckConfig,
 } from "@mcp_router/shared";
 import { v4 as uuidv4 } from "uuid";
+import { getVaultService } from "@/main/infrastructure/vault/vault.service";
+import { isVaultReference } from "@/main/infrastructure/vault/vault-ref";
 
 /**
  * サーバ情報用リポジトリクラス
@@ -168,6 +170,37 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
       const healthCheckConfig = this.safeParseJSON<
         MCPServerHealthCheckConfig | undefined
       >(row.health_check_config, "ヘルスチェック設定", undefined);
+      let resolvedBearerToken = bearerToken || undefined;
+
+      if (resolvedBearerToken) {
+        const migratedReference = getVaultService().migratePlaintextSecret(
+          resolvedBearerToken,
+          {
+            ownerType: "server",
+            ownerId: row.id,
+            secretType: "server-bearer-token",
+          },
+        );
+
+        if (migratedReference && migratedReference !== resolvedBearerToken) {
+          resolvedBearerToken = migratedReference;
+          this.db.execute(
+            "UPDATE servers SET bearer_token = :bearerToken WHERE id = :id",
+            {
+              bearerToken: migratedReference,
+              id: row.id,
+            },
+          );
+        }
+
+        if (isVaultReference(resolvedBearerToken)) {
+          resolvedBearerToken =
+            getVaultService().resolveSecret(resolvedBearerToken, {
+              ownerType: "server",
+              ownerId: row.id,
+            }) || undefined;
+        }
+      }
 
       // エンティティオブジェクトを構築
       return {
@@ -180,7 +213,7 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
         disabled: !!row.disabled,
         serverType: row.server_type || "local",
         remoteUrl: remoteUrl || undefined,
-        bearerToken: bearerToken || undefined,
+        bearerToken: resolvedBearerToken,
         inputParams: inputParams,
         description: row.description || undefined,
         version: row.version || undefined,
@@ -205,8 +238,16 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
    * @returns JSON文字列化されたデータのオブジェクト
    */
   private serializeEntityData(entity: MCPServer) {
+    const bearerTokenReference = entity.bearerToken
+      ? getVaultService().migratePlaintextSecret(entity.bearerToken, {
+          ownerType: "server",
+          ownerId: entity.id,
+          secretType: "server-bearer-token",
+        })
+      : null;
+
     return {
-      bearerToken: entity.bearerToken || null,
+      bearerToken: bearerTokenReference || null,
       env: JSON.stringify(entity.env || {}),
       inputParams: entity.inputParams
         ? JSON.stringify(entity.inputParams)

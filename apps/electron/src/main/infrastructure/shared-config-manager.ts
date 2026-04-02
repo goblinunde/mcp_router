@@ -248,6 +248,10 @@ export class SharedConfigManager implements ISharedConfigManager {
     return this.config.mcpApps.tokens.map((token) => this.cloneToken(token));
   }
 
+  public getLegacyTokens(): Token[] {
+    return this.getTokens();
+  }
+
   /**
    * トークンを取得
    */
@@ -273,6 +277,15 @@ export class SharedConfigManager implements ISharedConfigManager {
     } else {
       this.config.mcpApps.tokens.push(normalizedToken);
     }
+    this.saveConfig();
+  }
+
+  public clearLegacyTokens(): void {
+    if (this.config.mcpApps.tokens.length === 0) {
+      return;
+    }
+
+    this.config.mcpApps.tokens = [];
     this.saveConfig();
   }
 
@@ -323,35 +336,10 @@ export class SharedConfigManager implements ISharedConfigManager {
    * ワークスペースのサーバーリストとトークンを同期
    * 新しいサーバーがあれば自動的にトークンに追加
    */
-  syncTokensWithWorkspaceServers(serverList: string[]): void {
-    let updated = false;
-
-    this.config.mcpApps.tokens.forEach((token) => {
-      const map = token.serverAccess || {};
-      const initialSize = Object.keys(map).length;
-      const nextAccess = { ...map };
-      serverList.forEach((id) => {
-        if (!(id in nextAccess)) {
-          nextAccess[id] = true;
-        }
-      });
-      const nextSize = Object.keys(nextAccess).length;
-
-      // 新しいサーバーIDが追加された場合のみ更新
-      if (nextSize > initialSize) {
-        token.serverAccess = nextAccess;
-        updated = true;
-        console.log(
-          `[SharedConfigManager] Updated token ${token.id} with ${nextSize - initialSize} new server(s)`,
-        );
-      }
-    });
-
-    // 変更があった場合は保存
-    if (updated) {
-      this.saveConfig();
-      console.log(
-        "[SharedConfigManager] Tokens synchronized with workspace servers",
+  syncTokensWithWorkspaceServers(_serverList: string[]): void {
+    if (this.config.mcpApps.tokens.length > 0) {
+      console.warn(
+        "[SharedConfigManager] Legacy token auto-grant is disabled after gateway migration",
       );
     }
   }

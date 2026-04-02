@@ -13,6 +13,7 @@ import { RequestHandlers } from "./request-handlers";
 import { MCPServerManager } from "../mcp-server-manager/mcp-server-manager";
 import { getLogService } from "@/main/modules/mcp-logger/mcp-logger.service";
 import type { ToolCatalogService } from "@/main/modules/tool-catalog/tool-catalog.service";
+import type { GatewayAuthContext } from "@mcp_router/shared";
 
 /**
  * MCP Aggregator Server that combines multiple MCP servers into one
@@ -119,9 +120,11 @@ export class AggregatorServer {
     this.aggregatorServer.setRequestHandler(
       ListToolsRequestSchema,
       async (request) => {
-        const token = request.params?._meta?.token as string | undefined;
+        const gateway = request.params?._meta?.gateway as
+          | GatewayAuthContext
+          | undefined;
         const projectId = request.params?._meta?.projectId;
-        return await this.requestHandlers.handleListTools(token, projectId);
+        return await this.requestHandlers.handleListTools(gateway, projectId);
       },
     );
 
@@ -137,9 +140,14 @@ export class AggregatorServer {
     this.aggregatorServer.setRequestHandler(
       ListResourcesRequestSchema,
       async (request) => {
-        const token = request.params?._meta?.token as string | undefined;
+        const gateway = request.params?._meta?.gateway as
+          | GatewayAuthContext
+          | undefined;
         const projectId = request.params?._meta?.projectId;
-        return await this.requestHandlers.handleListResources(token, projectId);
+        return await this.requestHandlers.handleListResources(
+          gateway,
+          projectId,
+        );
       },
     );
 
@@ -147,10 +155,12 @@ export class AggregatorServer {
     this.aggregatorServer.setRequestHandler(
       ListResourceTemplatesRequestSchema,
       async (request) => {
-        const token = request.params?._meta?.token as string | undefined;
+        const gateway = request.params?._meta?.gateway as
+          | GatewayAuthContext
+          | undefined;
         const projectId = request.params?._meta?.projectId;
         return await this.requestHandlers.handleListResourceTemplates(
-          token,
+          gateway,
           projectId,
         );
       },
@@ -161,11 +171,13 @@ export class AggregatorServer {
       ReadResourceRequestSchema,
       async (request) => {
         const uri = request.params.uri;
-        const token = request.params?._meta?.token as string | undefined;
+        const gateway = request.params?._meta?.gateway as
+          | GatewayAuthContext
+          | undefined;
         const projectId = request.params?._meta?.projectId;
         return await this.requestHandlers.readResourceByUri(
           uri,
-          token,
+          gateway,
           projectId,
         );
       },
@@ -175,10 +187,12 @@ export class AggregatorServer {
     this.aggregatorServer.setRequestHandler(
       ListPromptsRequestSchema,
       async (request) => {
-        const token = request.params?._meta?.token as string | undefined;
+        const gateway = request.params?._meta?.gateway as
+          | GatewayAuthContext
+          | undefined;
         const projectId = request.params?._meta?.projectId;
         const allPrompts = await this.requestHandlers.getAllPromptsInternal(
-          token,
+          gateway,
           projectId,
         );
         return { prompts: allPrompts };
@@ -190,12 +204,14 @@ export class AggregatorServer {
       GetPromptRequestSchema,
       async (request) => {
         const promptName = request.params.name;
-        const token = request.params?._meta?.token as string | undefined;
+        const gateway = request.params?._meta?.gateway as
+          | GatewayAuthContext
+          | undefined;
         const projectId = request.params?._meta?.projectId;
         return await this.requestHandlers.getPromptByName(
           promptName,
           request.params.arguments,
-          token,
+          gateway,
           projectId,
         );
       },

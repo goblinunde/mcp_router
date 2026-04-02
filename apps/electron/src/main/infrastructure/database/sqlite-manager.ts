@@ -180,6 +180,13 @@ class SqliteManagerSingleton {
     }
     return SqliteManagerSingleton.instance;
   }
+
+  public static reset(): void {
+    if (SqliteManagerSingleton.instance) {
+      SqliteManagerSingleton.instance.close();
+      SqliteManagerSingleton.instance = null;
+    }
+  }
 }
 
 // グローバルなワークスペースデータベース参照
@@ -225,4 +232,12 @@ export function getSqliteManager(
     dbName,
   );
   return SqliteManagerSingleton.getInstance(dbName);
+}
+
+export function resetSqliteManagerForTests(): void {
+  if (currentWorkspaceDb) {
+    currentWorkspaceDb.close();
+    currentWorkspaceDb = null;
+  }
+  SqliteManagerSingleton.reset();
 }

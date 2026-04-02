@@ -1,6 +1,10 @@
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { MCPServer, UNASSIGNED_PROJECT_ID } from "@mcp_router/shared";
+import {
+  type GatewayAuthContext,
+  MCPServer,
+  UNASSIGNED_PROJECT_ID,
+} from "@mcp_router/shared";
 import {
   parseResourceUri,
   createResourceUri,
@@ -113,19 +117,22 @@ export class RequestHandlers extends RequestHandlerBase {
    * Handle a request to list all tools from all servers
    */
   public async handleListTools(
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectIdInput?: unknown,
   ): Promise<any> {
-    const clientId = this.getClientId(token);
+    const clientId = this.getClientId(authContext);
     const projectId = this.normalizeProjectId(projectIdInput);
 
     return this.executeWithHooks("tools/list", {}, clientId, async () => {
       // If tool catalog is enabled, return META_TOOLS (tool_discovery, tool_execute)
       if (this.isToolCatalogEnabled(projectId)) {
+        if (!authContext?.principal.permissions.includes("tool.list")) {
+          return { tools: [] };
+        }
         return { tools: META_TOOLS };
       }
       // Otherwise, return all tools from all servers (legacy behavior)
-      const allTools = await this.getAllToolsInternal(token, projectId);
+      const allTools = await this.getAllToolsInternal(authContext, projectId);
       return { tools: allTools };
     });
   }
@@ -159,14 +166,17 @@ export class RequestHandlers extends RequestHandlerBase {
    * Handle a request to list all resources from all servers
    */
   public async handleListResources(
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectIdInput?: unknown,
   ): Promise<any> {
-    const clientId = this.getClientId(token);
+    const clientId = this.getClientId(authContext);
     const projectId = this.normalizeProjectId(projectIdInput);
 
     return this.executeWithHooks("resources/list", {}, clientId, async () => {
-      const allResources = await this.getAllResourcesInternal(token, projectId);
+      const allResources = await this.getAllResourcesInternal(
+        authContext,
+        projectId,
+      );
       return { resources: allResources };
     });
   }
@@ -175,7 +185,7 @@ export class RequestHandlers extends RequestHandlerBase {
    * Get all resources from all servers (internal implementation)
    */
   private async getAllResourcesInternal(
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectId?: string | null,
   ): Promise<any[]> {
     const normalizedProjectId = this.normalizeProjectId(projectId);
@@ -194,14 +204,11 @@ export class RequestHandlers extends RequestHandlerBase {
         continue;
       }
 
-      // Check token access if provided
-      if (token) {
-        try {
-          this.tokenValidator.validateTokenAndAccess(token, serverName);
-        } catch {
-          // Skip this server if token doesn't have access
-          continue;
-        }
+      if (
+        authContext &&
+        !this.tokenValidator.hasServerAccessContext(authContext, serverId)
+      ) {
+        continue;
       }
 
       try {
@@ -246,10 +253,10 @@ export class RequestHandlers extends RequestHandlerBase {
    * Handle a request to list all resource templates
    */
   public async handleListResourceTemplates(
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectIdInput?: unknown,
   ): Promise<any> {
-    const clientId = this.getClientId(token);
+    const clientId = this.getClientId(authContext);
     const projectId = this.normalizeProjectId(projectIdInput);
 
     return this.executeWithHooks(
@@ -272,14 +279,11 @@ export class RequestHandlers extends RequestHandlerBase {
             continue;
           }
 
-          // Check token access if provided
-          if (token) {
-            try {
-              this.tokenValidator.validateTokenAndAccess(token, serverName);
-            } catch {
-              // Skip this server if token doesn't have access
-              continue;
-            }
+          if (
+            authContext &&
+            !this.tokenValidator.hasServerAccessContext(authContext, serverId)
+          ) {
+            continue;
           }
 
           try {
@@ -324,10 +328,10 @@ export class RequestHandlers extends RequestHandlerBase {
    */
   public async readResourceByUri(
     uri: string,
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectIdInput?: unknown,
   ): Promise<any> {
-    const clientId = this.getClientId(token);
+    const clientId = this.getClientId(authContext);
     const projectId = this.normalizeProjectId(projectIdInput);
 
     // Parse the URI to get the server name and original URI
@@ -340,16 +344,21 @@ export class RequestHandlers extends RequestHandlerBase {
     }
     const { serverName, path: originalUri } = parsed;
 
-    // Validate token access to the server if provided
-    if (token) {
-      this.tokenValidator.validateTokenAndAccess(token, serverName);
-    }
-
     const serverId = this.getServerIdByName(serverName);
     if (!serverId) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Unknown server: ${serverName}`,
+      );
+    }
+
+    if (
+      authContext &&
+      !this.tokenValidator.hasServerAccessContext(authContext, serverId)
+    ) {
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        "Token does not have access to this server",
       );
     }
 
@@ -423,7 +432,7 @@ export class RequestHandlers extends RequestHandlerBase {
    * Get all prompts from all servers (internal implementation)
    */
   public async getAllPromptsInternal(
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectIdInput?: unknown,
   ): Promise<any[]> {
     const projectId = this.normalizeProjectId(projectIdInput);
@@ -442,14 +451,11 @@ export class RequestHandlers extends RequestHandlerBase {
         continue;
       }
 
-      // Check token access if provided
-      if (token) {
-        try {
-          this.tokenValidator.validateTokenAndAccess(token, serverName);
-        } catch {
-          // Skip this server if token doesn't have access
-          continue;
-        }
+      if (
+        authContext &&
+        !this.tokenValidator.hasServerAccessContext(authContext, serverId)
+      ) {
+        continue;
       }
 
       try {
@@ -487,10 +493,10 @@ export class RequestHandlers extends RequestHandlerBase {
   public async getPromptByName(
     name: string,
     promptArgs?: any,
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectIdInput?: unknown,
   ): Promise<any> {
-    const clientId = this.getClientId(token);
+    const clientId = this.getClientId(authContext);
     const projectId = this.normalizeProjectId(projectIdInput);
 
     // Extract server name from the prefixed prompt name
@@ -505,16 +511,21 @@ export class RequestHandlers extends RequestHandlerBase {
     const serverName = parts[0];
     const actualPromptName = parts.slice(1).join("/");
 
-    // Validate token access to the server if provided
-    if (token) {
-      this.tokenValidator.validateTokenAndAccess(token, serverName);
-    }
-
     const serverId = this.getServerIdByName(serverName);
     if (!serverId) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Unknown server: ${serverName}`,
+      );
+    }
+
+    if (
+      authContext &&
+      !this.tokenValidator.hasServerAccessContext(authContext, serverId)
+    ) {
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        "Token does not have access to this server",
       );
     }
 
@@ -566,7 +577,7 @@ export class RequestHandlers extends RequestHandlerBase {
    * Get all tools from all servers (internal implementation for legacy mode)
    */
   private async getAllToolsInternal(
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectId?: string | null,
   ): Promise<any[]> {
     const normalizedProjectId = this.normalizeProjectId(projectId);
@@ -587,12 +598,11 @@ export class RequestHandlers extends RequestHandlerBase {
         continue;
       }
 
-      if (token) {
-        try {
-          this.tokenValidator.validateTokenAndAccess(token, serverName);
-        } catch {
-          continue;
-        }
+      if (
+        authContext &&
+        !this.tokenValidator.hasServerAccessContext(authContext, serverId)
+      ) {
+        continue;
       }
 
       try {
@@ -609,6 +619,13 @@ export class RequestHandlers extends RequestHandlerBase {
 
         for (const tool of tools.tools) {
           if (permissions[tool.name] === false) {
+            continue;
+          }
+
+          if (
+            authContext &&
+            !this.tokenValidator.canListTool(authContext, serverId, tool.name)
+          ) {
             continue;
           }
 
@@ -637,7 +654,7 @@ export class RequestHandlers extends RequestHandlerBase {
    */
   private async getServerNameForTool(
     toolName: string,
-    token?: string,
+    authContext?: GatewayAuthContext,
     projectId?: string | null,
   ): Promise<string | undefined> {
     const normalizedProjectId = this.normalizeProjectId(projectId);
@@ -645,7 +662,7 @@ export class RequestHandlers extends RequestHandlerBase {
     let toolMap = this.toolNameToServerMap.get(projectKey);
 
     if (!toolMap || !toolMap.has(toolName)) {
-      await this.getAllToolsInternal(token, normalizedProjectId);
+      await this.getAllToolsInternal(authContext, normalizedProjectId);
       toolMap = this.toolNameToServerMap.get(projectKey);
     }
 
@@ -660,10 +677,12 @@ export class RequestHandlers extends RequestHandlerBase {
     toolName: string,
     projectId: string | null,
   ): Promise<any> {
-    const token = request.params._meta?.token as string | undefined;
+    const authContext = request.params._meta?.gateway as
+      | GatewayAuthContext
+      | undefined;
     const mappedServerName = await this.getServerNameForTool(
       toolName,
-      token,
+      authContext,
       projectId,
     );
     if (!mappedServerName) {
@@ -674,17 +693,27 @@ export class RequestHandlers extends RequestHandlerBase {
     }
     const serverName = mappedServerName;
     const originalToolName = toolName;
-
-    const clientId = this.tokenValidator.validateTokenAndAccess(
-      token,
-      serverName,
-    );
+    const clientId = this.getClientId(authContext);
 
     const serverId = this.getServerIdByName(serverName);
     if (!serverId) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Unknown server: ${serverName}`,
+      );
+    }
+
+    if (
+      authContext &&
+      !this.tokenValidator.canInvokeTool(
+        authContext,
+        serverId,
+        originalToolName,
+      )
+    ) {
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Token does not have permission to invoke "${originalToolName}"`,
       );
     }
 

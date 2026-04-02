@@ -1,0 +1,27 @@
+version: "1"
+routingRules:
+  - id: "code-default"
+    match:
+      intents:
+        - "code"
+        - "refactor"
+        - "test"
+      capabilities:
+        - "code"
+    preferServerIds:
+      - "filesystem"
+      - "github"
+    fallbackServerIds:
+      - "docs-index"
+modelRouting:
+  - modelPattern: "gpt-5*"
+    preferredServerIds:
+      - "filesystem"
+      - "github"
+    preferredCapabilities:
+      - "code"
+  - modelPattern: "claude*"
+    preferredServerIds:
+      - "docs-index"
+    preferredCapabilities:
+      - "documents"

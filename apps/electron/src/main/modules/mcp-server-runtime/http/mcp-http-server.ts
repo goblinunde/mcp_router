@@ -7,7 +7,11 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse";
 import { getPlatformAPIManager } from "../../workspace/platform-api-manager";
 import { TokenValidator } from "../token-validator";
 import { ProjectRepository } from "../../projects/projects.repository";
-import { PROJECT_HEADER, UNASSIGNED_PROJECT_ID } from "@mcp_router/shared";
+import {
+  PROJECT_HEADER,
+  UNASSIGNED_PROJECT_ID,
+  type GatewayAuthContext,
+} from "@mcp_router/shared";
 
 /**
  * HTTP server that exposes MCP functionality through REST endpoints
@@ -21,6 +25,7 @@ export class MCPHttpServer {
   // SSEセッション用のマップ
   private sseSessions: Map<string, SSEServerTransport> = new Map();
   private sseSessionProjects: Map<string, string | null> = new Map();
+  private sseSessionAuthContexts: Map<string, GatewayAuthContext> = new Map();
 
   constructor(
     serverManager: MCPServerManager,
@@ -53,42 +58,59 @@ export class MCPHttpServer {
       res: express.Response,
       next: express.NextFunction,
     ) => {
-      const token = req.headers["authorization"];
-      // Bearers token format
-      if (token && token.startsWith("Bearer ")) {
-        // Remove 'Bearer ' prefix
-        req.headers["authorization"] = token.substring(7);
+      const tokenHeader = req.headers["authorization"];
+      const sessionId =
+        (req.query.sessionId as string) ||
+        (req.headers["mcp-session-id"] as string);
+
+      if (!tokenHeader && sessionId) {
+        const sessionAuthContext = this.sseSessionAuthContexts.get(sessionId);
+        if (sessionAuthContext) {
+          (req as any).gatewayAuthContext = sessionAuthContext;
+          next();
+          return;
+        }
       }
 
-      // Log the request without sensitive token information
-      // console.log(`[HTTP] ${req.method} ${req.url}${clientName ? ` (Client: ${clientName})` : ''}, Body = ${JSON.stringify(req.body)}`);
-      // Token validation middleware
-      if (!token) {
-        // No token provided
+      if (!tokenHeader) {
         res.status(401).json({
           error: "Authentication required. Please provide a valid token.",
         });
         return;
       }
 
-      // Validate the token
       const tokenId =
-        typeof token === "string"
-          ? token.startsWith("Bearer ")
-            ? token.substring(7)
-            : token
+        typeof tokenHeader === "string"
+          ? tokenHeader.startsWith("Bearer ")
+            ? tokenHeader.substring(7)
+            : tokenHeader
           : "";
-      const validation = this.tokenValidator.validateToken(tokenId);
+      const workspaceId =
+        getPlatformAPIManager().getCurrentWorkspace()?.id ?? null;
+      const validation = this.tokenValidator.validateToken(
+        tokenId,
+        workspaceId,
+      );
 
       if (!validation.isValid) {
-        // Invalid token
-        res.status(401).json({
+        res.status(validation.statusCode || 401).json({
           error: validation.error || "Invalid token. Authentication failed.",
         });
         return;
       }
 
-      // Token is valid and has proper scope, proceed to the next middleware or route handler
+      const authContext = this.tokenValidator.resolveAuthContext(
+        tokenId,
+        workspaceId,
+      );
+      if (!authContext) {
+        res.status(401).json({
+          error: "Invalid token. Authentication failed.",
+        });
+        return;
+      }
+
+      (req as any).gatewayAuthContext = authContext;
       next();
     };
 
@@ -144,23 +166,19 @@ export class MCPHttpServer {
 
   private attachRequestMetadata(
     payload: any,
-    tokenHeader: string | string[] | undefined,
+    authContext: GatewayAuthContext,
     projectId: string | null,
   ): void {
-    const tokenValue = Array.isArray(tokenHeader)
-      ? tokenHeader[0]
-      : tokenHeader;
-
     if (payload.params && typeof payload.params === "object") {
       payload.params._meta = {
         ...(payload.params._meta || {}),
-        token: tokenValue,
+        gateway: authContext,
         projectId,
       };
     } else if (payload.params === undefined) {
       payload.params = {
         _meta: {
-          token: tokenValue,
+          gateway: authContext,
           projectId,
         },
       };
@@ -202,8 +220,17 @@ export class MCPHttpServer {
         }
 
         // Append metadata for downstream handlers
-        const token = req.headers["authorization"];
-        this.attachRequestMetadata(modifiedBody, token, projectFilter);
+        const authContext = (req as any).gatewayAuthContext as
+          | GatewayAuthContext
+          | undefined;
+        if (!authContext) {
+          res.status(401).json({
+            error: "Authentication context missing",
+          });
+          return;
+        }
+
+        this.attachRequestMetadata(modifiedBody, authContext, projectFilter);
         // For local workspaces, use local aggregator
         await this.aggregatorServer
           .getTransport()
@@ -268,11 +295,18 @@ export class MCPHttpServer {
         // セッションの保存
         this.sseSessions.set(sessionId, transport);
         this.sseSessionProjects.set(sessionId, projectFilter);
+        const authContext = (req as any).gatewayAuthContext as
+          | GatewayAuthContext
+          | undefined;
+        if (authContext) {
+          this.sseSessionAuthContexts.set(sessionId, authContext);
+        }
 
         // クライアントが切断したときのクリーンアップ
         res.on("close", () => {
           this.sseSessions.delete(sessionId);
           this.sseSessionProjects.delete(sessionId);
+          this.sseSessionAuthContexts.delete(sessionId);
         });
 
         if (platformManager.isRemoteWorkspace()) {
@@ -360,8 +394,17 @@ export class MCPHttpServer {
           return;
         }
 
-        const token = req.headers["authorization"];
-        this.attachRequestMetadata(modifiedBody, token, projectFilter);
+        const authContext =
+          ((req as any).gatewayAuthContext as GatewayAuthContext | undefined) ||
+          this.sseSessionAuthContexts.get(sessionId);
+        if (!authContext) {
+          res.status(401).json({
+            error: "Authentication context missing",
+          });
+          return;
+        }
+
+        this.attachRequestMetadata(modifiedBody, authContext, projectFilter);
 
         // トランスポートでメッセージを処理
         await transport.handlePostMessage(req, res, modifiedBody);
@@ -387,7 +430,7 @@ export class MCPHttpServer {
   public start(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.server = this.app.listen(this.port, () => {
+        this.server = this.app.listen(this.port, "127.0.0.1", () => {
           resolve();
         });
 

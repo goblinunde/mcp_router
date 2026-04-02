@@ -1,67 +1,36 @@
-import crypto from "crypto";
-import { McpAppsManagerRepository } from "./mcp-apps-manager.repository";
 import {
   Token,
   TokenGenerateOptions,
   TokenValidationResult,
   TokenServerAccess,
 } from "@mcp_router/shared";
+import { getGatewaySecurityService } from "../gateway/gateway-security.service";
 
 /**
  * トークン管理機能を提供するクラス
  */
 export class TokenManager {
+  private gatewaySecurity = getGatewaySecurityService();
+
+  public constructor() {
+    this.gatewaySecurity.initialize();
+  }
+
   /**
    * 新しいトークンを生成
    */
   public generateToken(options: TokenGenerateOptions): Token {
-    const now = Math.floor(Date.now() / 1000);
-    const clientId = options.clientId;
-
-    // 同じクライアントIDのトークンが存在する場合は削除
-    const clientTokens =
-      McpAppsManagerRepository.getInstance().getTokensByClientId(clientId);
-    if (clientTokens.length > 0) {
-      McpAppsManagerRepository.getInstance().deleteClientTokens(clientId);
-    }
-
-    // より強固なランダム値を生成（24バイト = 192ビット）
-    const randomBytes = crypto
-      .randomBytes(24)
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, ""); // URL安全なBase64形式に変換
-
-    const token: Token = {
-      id: "mcpr_" + randomBytes,
-      clientId,
-      issuedAt: now,
-      serverAccess: options.serverAccess || {},
-    };
-
-    // トークンを永続化
-    McpAppsManagerRepository.getInstance().saveToken(token);
-    return token;
+    return this.gatewaySecurity.createToken(options);
   }
 
   /**
    * トークンを検証
    */
-  public validateToken(tokenId: string): TokenValidationResult {
-    const token = McpAppsManagerRepository.getInstance().getToken(tokenId);
-
-    if (!token) {
-      return {
-        isValid: false,
-        error: "Token not found",
-      };
-    }
-
-    return {
-      isValid: true,
-      clientId: token.clientId,
-    };
+  public validateToken(
+    tokenId: string,
+    workspaceId?: string | null,
+  ): TokenValidationResult {
+    return this.gatewaySecurity.validateToken(tokenId, workspaceId);
   }
 
   /**
@@ -76,32 +45,32 @@ export class TokenManager {
    * トークンを削除
    */
   public deleteToken(tokenId: string): boolean {
-    return McpAppsManagerRepository.getInstance().deleteToken(tokenId);
+    return this.gatewaySecurity.deleteToken(tokenId);
   }
 
   /**
    * クライアントIDに関連付けられた全てのトークンを削除
    */
   public deleteClientTokens(clientId: string): number {
-    return McpAppsManagerRepository.getInstance().deleteClientTokens(clientId);
+    return this.gatewaySecurity.deleteClientTokens(clientId);
   }
 
   /**
    * 全てのトークンをリスト表示
    */
   public listTokens(): Token[] {
-    return McpAppsManagerRepository.getInstance().listTokens();
+    return this.gatewaySecurity.listTokens();
   }
 
   /**
    * トークンのサーバアクセス権限を確認
    */
   public hasServerAccess(tokenId: string, serverId: string): boolean {
-    const token = McpAppsManagerRepository.getInstance().getToken(tokenId);
-    if (!token) {
+    const context = this.gatewaySecurity.resolveAuthContext(tokenId, null);
+    if (!context) {
       return false;
     }
-    return !!token.serverAccess?.[serverId];
+    return this.gatewaySecurity.canAccessServer(context, serverId);
   }
 
   /**
@@ -111,7 +80,7 @@ export class TokenManager {
     tokenId: string,
     serverAccess: TokenServerAccess,
   ): boolean {
-    return McpAppsManagerRepository.getInstance().updateTokenServerAccess(
+    return this.gatewaySecurity.updateTokenServerAccess(
       tokenId,
       serverAccess || {},
     );
