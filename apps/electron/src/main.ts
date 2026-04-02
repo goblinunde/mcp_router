@@ -28,7 +28,10 @@ import { getSkillService } from "@/main/modules/skills/skills.service";
 if (process.platform === "linux") {
   // Electron 36 can crash on some Fedora/GNOME setups if GTK4 gets selected.
   app.commandLine.appendSwitch("gtk-version", "3");
-  app.setDesktopName("mcp-router.desktop");
+  const linuxApp = app as typeof app & {
+    setDesktopName?: (desktopFileName: string) => void;
+  };
+  linuxApp.setDesktopName?.("mcp-router.desktop");
 }
 
 const gotTheLock = app.requestSingleInstanceLock();

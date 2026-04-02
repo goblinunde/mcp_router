@@ -12,7 +12,6 @@ import {
 import { useTranslation } from "react-i18next";
 import { useWorkspaceStore } from "@/renderer/stores";
 import { usePlatformAPI } from "@/renderer/platform-api";
-// @ts-expect-error: Webpack file-loader provides typing for image assets at runtime
 import iconImage from "../../../public/images/icon/icon.png";
 import {
   Sidebar,

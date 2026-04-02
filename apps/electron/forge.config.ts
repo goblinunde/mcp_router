@@ -32,7 +32,7 @@ const hasNotarizeCreds = !!(
 const appDescription =
   "Effortlessly manage your MCP servers with MCP Router. MCP Router provides a user-friendly interface for organizing and operating MCP servers.";
 const linuxDesktopFileName = "mcp-router.desktop";
-const linuxIconName = "mcp-router";
+const linuxIconPath = path.resolve(__dirname, "public/images/icon/icon.png");
 
 function renameRpm(dest: string): string {
   return path.join(
@@ -45,11 +45,6 @@ function patchFedoraSpec(specPath: string): void {
   const installSectionNeedle = "cp -r usr/* %{buildroot}/usr/";
   const installSectionReplacement = [
     "cp -r ../usr/* %{buildroot}/usr/",
-    "",
-    "# Install the launcher icon into the standard hicolor theme directory",
-    "# so Fedora/GNOME can resolve it reliably from the desktop entry.",
-    `install -d %{buildroot}/usr/share/icons/hicolor/512x512/apps`,
-    `cp %{buildroot}/usr/share/pixmaps/${linuxIconName}.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/${linuxIconName}.png`,
     "",
     "# Ensure the running Electron window matches the desktop file on Linux.",
     `if ! grep -q '^StartupWMClass=' %{buildroot}/usr/share/applications/${linuxDesktopFileName}; then`,
@@ -181,6 +176,9 @@ const config: ForgeConfig = {
           bin: "MCP Router",
           productName: "MCP Router",
           genericName: "MCP Server Management App",
+          icon: {
+            "512x512": linuxIconPath,
+          },
           description: appDescription,
           productDescription: appDescription,
           homepage: "https://github.com/mcp-router/mcp-router",
