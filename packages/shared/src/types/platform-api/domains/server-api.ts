@@ -36,6 +36,7 @@ export interface ServerAPI {
   delete(id: string): Promise<void>;
   start(id: string): Promise<boolean>;
   stop(id: string): Promise<boolean>;
+  reconnect(id: string): Promise<boolean>;
   getStatus(id: string): Promise<ServerStatus>;
   selectFile(options?: {
     title?: string;

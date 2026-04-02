@@ -135,6 +135,12 @@ export class RemotePlatformAPI implements PlatformAPI {
       return true;
     },
 
+    reconnect: async (id: string): Promise<boolean> => {
+      await this.client.servers.stop.mutate({ id });
+      await this.client.servers.start.mutate({ id });
+      return true;
+    },
+
     getStatus: async (id: string): Promise<ServerStatus> => {
       const response = await this.client.servers.getStatus.query({ id });
       return this.unwrapResponse<ServerStatus>(response);

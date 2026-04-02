@@ -1,5 +1,5 @@
 import React from "react";
-import { MCPServer } from "@mcp_router/shared";
+import type { MCPServer, MCPServerHealthStatus } from "@mcp_router/shared";
 import { Card, CardContent } from "@mcp_router/ui";
 import { Badge } from "@mcp_router/ui";
 import { Switch } from "@mcp_router/ui";
@@ -28,6 +28,32 @@ export const ServerCardCompact: React.FC<ServerCardCompactProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  const healthConfig: Record<
+    MCPServerHealthStatus,
+    { color: string; pulseEffect: string }
+  > = {
+    healthy: {
+      color: "bg-emerald-500",
+      pulseEffect: "",
+    },
+    degraded: {
+      color: "bg-amber-500",
+      pulseEffect: "",
+    },
+    unhealthy: {
+      color: "bg-red-500",
+      pulseEffect: "animate-pulse",
+    },
+    recovering: {
+      color: "bg-sky-500",
+      pulseEffect: "animate-pulse",
+    },
+    unknown: {
+      color: "bg-muted-foreground",
+      pulseEffect: "",
+    },
+  };
+
   const statusConfig = {
     running: {
       color: "bg-emerald-500",
@@ -54,6 +80,12 @@ export const ServerCardCompact: React.FC<ServerCardCompactProps> = ({
   const status =
     statusConfig[server.status as keyof typeof statusConfig] ||
     statusConfig.stopped;
+  const resolvedHealthStatus: MCPServerHealthStatus =
+    server.healthStatus ||
+    (server.status === "running" ? "healthy" : "unknown");
+  const health = healthConfig[resolvedHealthStatus];
+  const showHealthBadge =
+    resolvedHealthStatus !== "unknown" || (server.autoRecoveryCount || 0) > 0;
 
   return (
     <Card
@@ -79,6 +111,29 @@ export const ServerCardCompact: React.FC<ServerCardCompactProps> = ({
                 />
                 {t(`serverList.status.${server.status}`)}
               </Badge>
+              {showHealthBadge && (
+                <Badge
+                  variant="outline"
+                  className={cn("h-5 text-xs", health.pulseEffect)}
+                  title={server.healthCheckError || undefined}
+                >
+                  <div
+                    className={cn("h-2 w-2 rounded-full mr-1", health.color)}
+                  />
+                  {t(`serverList.health.${resolvedHealthStatus}`)}
+                </Badge>
+              )}
+              {(server.autoRecoveryCount || 0) > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="h-5 text-xs"
+                  title={server.lastRecoveryAt || undefined}
+                >
+                  {t("serverList.autoRecovered", {
+                    count: server.autoRecoveryCount,
+                  })}
+                </Badge>
+              )}
               {server.serverType === "remote" && (
                 <Badge variant="secondary" className="h-5 text-xs">
                   Remote

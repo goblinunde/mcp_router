@@ -34,6 +34,7 @@ export interface MCPServerConfig {
   version?: string;
 
   toolPermissions?: MCPServerToolPermissions;
+  healthCheckConfig?: MCPServerHealthCheckConfig;
 }
 
 export interface MCPTool {
@@ -45,6 +46,52 @@ export interface MCPTool {
 
 export interface MCPServerToolPermissions {
   [toolName: string]: boolean;
+}
+
+export interface MCPServerHealthCheckConfig {
+  enabled?: boolean;
+  intervalMs?: number;
+  timeoutMs?: number;
+  failureThreshold?: number;
+  autoRecoveryEnabled?: boolean;
+  recoveryBackoffMs?: number;
+  maxRecoveryAttempts?: number;
+  recoveryWindowMs?: number;
+}
+
+export type MCPServerHealthStatus =
+  | "unknown"
+  | "healthy"
+  | "degraded"
+  | "unhealthy"
+  | "recovering";
+
+export type MCPServerHealthEventLevel =
+  | "info"
+  | "success"
+  | "warning"
+  | "error";
+
+export type MCPServerHealthEventType =
+  | "health-check-failed"
+  | "health-check-recovered"
+  | "auto-recovery-scheduled"
+  | "auto-recovery-succeeded"
+  | "auto-recovery-failed"
+  | "auto-recovery-paused"
+  | "manual-reconnect-requested"
+  | "manual-reconnect-succeeded"
+  | "manual-reconnect-failed";
+
+export interface MCPServerHealthEvent {
+  id: string;
+  timestamp: string;
+  type: MCPServerHealthEventType;
+  level: MCPServerHealthEventLevel;
+  message: string;
+  detail?: string;
+  attempt?: number;
+  failureCount?: number;
 }
 
 export interface MCPResource {
@@ -64,6 +111,15 @@ export interface MCPServer extends MCPServerConfig {
   status: "running" | "starting" | "stopping" | "stopped" | "error";
   errorMessage?: string; // Error message when status is "error"
   logs?: string[];
+  healthStatus?: MCPServerHealthStatus;
+  healthCheckFailures?: number;
+  healthCheckError?: string;
+  lastHealthCheckAt?: string;
+  lastHealthyAt?: string;
+  recoveryAttempts?: number;
+  autoRecoveryCount?: number;
+  lastRecoveryAt?: string;
+  healthEvents?: MCPServerHealthEvent[];
   // Properties for the MCP Test Page
   tools?: MCPTool[];
   resources?: MCPResource[];

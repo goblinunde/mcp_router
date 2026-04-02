@@ -375,6 +375,7 @@ export class CloudSyncService {
       description: server.description,
       projectId: server.projectId,
       toolPermissions: server.toolPermissions,
+      healthCheckConfig: server.healthCheckConfig,
     };
   }
 

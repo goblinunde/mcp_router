@@ -72,6 +72,7 @@ class ElectronPlatformAPI implements PlatformAPI {
       delete: (id) => window.electronAPI.removeMcpServer(id),
       start: (id) => window.electronAPI.startMcpServer(id),
       stop: (id) => window.electronAPI.stopMcpServer(id),
+      reconnect: (id) => window.electronAPI.reconnectMcpServer(id),
       getStatus: async (id) => {
         const servers = await window.electronAPI.listMcpServers();
         const server = servers.find((s: any) => s.id === id);

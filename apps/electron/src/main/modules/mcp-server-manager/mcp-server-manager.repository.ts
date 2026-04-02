@@ -3,7 +3,11 @@ import {
   SqliteManager,
   getSqliteManager,
 } from "../../infrastructure/database/sqlite-manager";
-import { MCPServer, MCPServerConfig } from "@mcp_router/shared";
+import {
+  MCPServer,
+  MCPServerConfig,
+  MCPServerHealthCheckConfig,
+} from "@mcp_router/shared";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -37,6 +41,7 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
       required_params TEXT,
       project_id TEXT,
       tool_permissions TEXT,
+      health_check_config TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )
@@ -160,6 +165,9 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
         "ツール権限",
         {},
       );
+      const healthCheckConfig = this.safeParseJSON<
+        MCPServerHealthCheckConfig | undefined
+      >(row.health_check_config, "ヘルスチェック設定", undefined);
 
       // エンティティオブジェクトを構築
       return {
@@ -181,6 +189,7 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
         required: requiredParams,
         projectId: row.project_id || null,
         toolPermissions,
+        healthCheckConfig,
         status: "stopped",
         logs: [],
       };
@@ -205,6 +214,9 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
       toolPermissions: entity.toolPermissions
         ? JSON.stringify(entity.toolPermissions)
         : null,
+      healthCheckConfig: entity.healthCheckConfig
+        ? JSON.stringify(entity.healthCheckConfig)
+        : null,
       command: entity.command || null,
       args: JSON.stringify(entity.args || []),
       remoteUrl: entity.remoteUrl || null,
@@ -227,6 +239,7 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
         args,
         remoteUrl,
         toolPermissions,
+        healthCheckConfig,
       } = this.serializeEntityData(entity);
 
       // DB行オブジェクトを構築
@@ -245,6 +258,7 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
         input_params: inputParams,
         project_id: entity.projectId ?? null,
         tool_permissions: toolPermissions,
+        health_check_config: healthCheckConfig,
         description: entity.description || null,
         version: entity.version || null,
         latest_version: entity.latestVersion || null,
@@ -334,6 +348,7 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
         args,
         remoteUrl,
         toolPermissions,
+        healthCheckConfig,
       } = this.serializeEntityData(entity);
 
       // DB行オブジェクトを構築
@@ -352,6 +367,7 @@ export class McpServerManagerRepository extends BaseRepository<MCPServer> {
         input_params: inputParams,
         project_id: entity.projectId ?? null,
         tool_permissions: toolPermissions,
+        health_check_config: healthCheckConfig,
         description: entity.description || null,
         version: entity.version || null,
         latest_version: entity.latestVersion || null,

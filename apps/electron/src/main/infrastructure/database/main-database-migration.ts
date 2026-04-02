@@ -118,6 +118,12 @@ export class MainDatabaseMigration {
       description: "Add agent_paths table for custom symlink targets",
       execute: (db) => this.migrateAddAgentPathsTable(db),
     });
+
+    this.migrations.push({
+      id: "20260402_add_health_check_config_column",
+      description: "Add health_check_config column to servers table",
+      execute: (db) => this.migrateAddHealthCheckConfigColumn(db),
+    });
   }
 
   /**
@@ -507,6 +513,37 @@ export class MainDatabaseMigration {
       }
     } catch (error) {
       console.error("Error while adding tool_permissions column:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * health_check_config列を追加するマイグレーション
+   */
+  private migrateAddHealthCheckConfigColumn(db: SqliteManager): void {
+    try {
+      const tableExists = db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = 'servers'",
+        {},
+      );
+
+      if (!tableExists) {
+        console.log("servers table does not exist, skipping this migration");
+        return;
+      }
+
+      const tableInfo = db.all("PRAGMA table_info(servers)");
+      const columnNames = tableInfo.map((col: any) => col.name);
+
+      if (!columnNames.includes("health_check_config")) {
+        console.log("Adding health_check_config column to servers");
+        db.execute("ALTER TABLE servers ADD COLUMN health_check_config TEXT");
+        console.log("health_check_config column added");
+      } else {
+        console.log("health_check_config column already exists, skipping");
+      }
+    } catch (error) {
+      console.error("Error while adding health_check_config column:", error);
       throw error;
     }
   }

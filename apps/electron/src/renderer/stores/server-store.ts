@@ -29,6 +29,7 @@ export interface ServerStoreState extends ServerState {
   // Server operations
   startServer: (id: string) => Promise<void>;
   stopServer: (id: string) => Promise<void>;
+  reconnectServer: (id: string) => Promise<void>;
   refreshServers: () => Promise<void>;
   createServer: (config: MCPServerConfig) => Promise<void>;
   updateServerConfig: (
@@ -158,6 +159,27 @@ export const createServerStore = (
         // Refresh to get the errorMessage from the server
         await refreshServers();
         // Re-throw the error so the caller can handle it
+        throw error;
+      } finally {
+        setUpdating(id, false);
+      }
+    },
+
+    reconnectServer: async (id) => {
+      const { setUpdating, setError, refreshServers } = get();
+
+      try {
+        setUpdating(id, true);
+        setError(null);
+
+        const platformAPI = getPlatformAPI();
+        await platformAPI.servers.reconnect(id);
+        await refreshServers();
+      } catch (error) {
+        setError(
+          error instanceof Error ? error.message : "Failed to reconnect server",
+        );
+        await refreshServers();
         throw error;
       } finally {
         setUpdating(id, false);

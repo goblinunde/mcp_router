@@ -23,6 +23,11 @@ export function setupMcpServerHandlers(
     return result;
   });
 
+  ipcMain.handle("mcp:reconnect", async (_, id: string) => {
+    const mcpServerManager = getMCPServerManager();
+    return await mcpServerManager.reconnectServer(id, "MCP Router UI");
+  });
+
   ipcMain.handle("mcp:add", async (_, input: CreateServerInput) => {
     const mcpServerManager = getMCPServerManager();
     let server = null;

@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { MCPServer, ProjectOptimization } from "@mcp_router/shared";
+import type {
+  MCPInputParam,
+  MCPServer,
+  MCPServerConfig,
+  MCPServerHealthCheckConfig,
+  MCPServerHealthStatus,
+  ProjectOptimization,
+} from "@mcp_router/shared";
 import { ScrollArea } from "@mcp_router/ui";
 import { Badge } from "@mcp_router/ui";
 import { Switch } from "@mcp_router/ui";
@@ -90,6 +97,38 @@ const getStatusVisual = (
   );
 };
 
+const HEALTH_VISUALS: Record<
+  MCPServerHealthStatus,
+  { color: string; pulseEffect: string }
+> = {
+  healthy: {
+    color: "bg-emerald-500",
+    pulseEffect: "",
+  },
+  degraded: {
+    color: "bg-amber-500",
+    pulseEffect: "",
+  },
+  unhealthy: {
+    color: "bg-red-500",
+    pulseEffect: "animate-pulse",
+  },
+  recovering: {
+    color: "bg-sky-500",
+    pulseEffect: "animate-pulse",
+  },
+  unknown: {
+    color: "bg-muted-foreground",
+    pulseEffect: "",
+  },
+};
+
+const getResolvedHealthStatus = (server: MCPServer): MCPServerHealthStatus => {
+  return (
+    server.healthStatus || (server.status === "running" ? "healthy" : "unknown")
+  );
+};
+
 const Home: React.FC = () => {
   const { t } = useTranslation();
 
@@ -101,6 +140,7 @@ const Home: React.FC = () => {
     expandedServerId,
     startServer,
     stopServer,
+    reconnectServer,
     deleteServer,
     refreshServers,
     updateServerConfig,
@@ -152,9 +192,71 @@ const Home: React.FC = () => {
   const { initializeFromServer, setIsAdvancedEditing } =
     useServerEditingStore();
 
+  React.useEffect(() => {
+    if (!advancedSettingsServer) {
+      return;
+    }
+
+    const latestServer = servers.find(
+      (server) => server.id === advancedSettingsServer.id,
+    );
+
+    if (!latestServer) {
+      setAdvancedSettingsServer(null);
+      setIsAdvancedEditing(false);
+      return;
+    }
+
+    if (latestServer !== advancedSettingsServer) {
+      setAdvancedSettingsServer(latestServer);
+    }
+  }, [advancedSettingsServer, servers, setIsAdvancedEditing]);
+
   // State for delete confirmation dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [serverToDelete, setServerToDelete] = useState<MCPServer | null>(null);
+
+  const renderHealthBadges = (server: MCPServer) => {
+    const resolvedHealthStatus = getResolvedHealthStatus(server);
+    const healthVisual = HEALTH_VISUALS[resolvedHealthStatus];
+    const showHealthBadge =
+      resolvedHealthStatus !== "unknown" || (server.autoRecoveryCount || 0) > 0;
+
+    if (!showHealthBadge && !(server.autoRecoveryCount || 0)) {
+      return null;
+    }
+
+    return (
+      <>
+        {showHealthBadge && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "w-fit flex items-center gap-1",
+              healthVisual.pulseEffect,
+            )}
+            title={server.healthCheckError || undefined}
+          >
+            <div
+              className={cn("h-2 w-2 rounded-full", healthVisual.color)}
+            ></div>
+            {t(`serverList.health.${resolvedHealthStatus}`)}
+          </Badge>
+        )}
+        {(server.autoRecoveryCount || 0) > 0 && (
+          <Badge
+            variant="secondary"
+            className="w-fit"
+            title={server.lastRecoveryAt || undefined}
+          >
+            {t("serverList.autoRecovered", {
+              count: server.autoRecoveryCount,
+            })}
+          </Badge>
+        )}
+      </>
+    );
+  };
 
   // Toggle expanded server details - open settings
   const toggleServerExpand = (serverId: string) => {
@@ -179,7 +281,7 @@ const Home: React.FC = () => {
     try {
       await deleteServer(serverToDelete.id);
       toast.success(t("serverDetails.removeSuccess"));
-    } catch (error) {
+    } catch {
       toast.error(t("serverDetails.removeFailed"));
     } finally {
       setDeleteDialogOpen(false);
@@ -478,6 +580,7 @@ const Home: React.FC = () => {
                                           `serverList.status.${server.status}`,
                                         )}
                                       </Badge>
+                                      {renderHealthBadges(server)}
 
                                       {/* Warning Badge for unset required params */}
                                       {hasUnsetRequiredParams(server) && (
@@ -686,6 +789,7 @@ const Home: React.FC = () => {
                                     ></div>
                                     {t(`serverList.status.${server.status}`)}
                                   </Badge>
+                                  {renderHealthBadges(server)}
                                   {hasUnsetRequiredParams(server) && (
                                     <Badge
                                       variant="destructive"
@@ -1012,10 +1116,14 @@ const Home: React.FC = () => {
             await refreshServers();
           }}
           onOpenManageProjects={() => setIsHomeSettingsOpen(true)}
+          onReconnect={async () => {
+            await reconnectServer(advancedSettingsServer.id);
+          }}
           handleSave={async (
-            updatedInputParams?: any,
+            updatedInputParams?: Record<string, MCPInputParam>,
             editedName?: string,
             updatedToolPermissions?: Record<string, boolean>,
+            updatedHealthCheckConfig?: MCPServerHealthCheckConfig,
           ) => {
             try {
               const {
@@ -1038,7 +1146,7 @@ const Home: React.FC = () => {
                 updatedInputParams || advancedSettingsServer.inputParams;
               if (finalInputParams) {
                 Object.entries(finalInputParams).forEach(
-                  ([key, param]: [string, any]) => {
+                  ([key, param]: [string, MCPInputParam]) => {
                     // envに値が設定されていない場合、default値を設定
                     if (
                       !envObj[key] &&
@@ -1052,13 +1160,16 @@ const Home: React.FC = () => {
                 );
               }
 
-              const updatedConfig: any = {
+              const updatedConfig: Partial<MCPServerConfig> = {
                 name: editedName || advancedSettingsServer.name,
                 command: editedCommand,
                 args: editedArgs,
                 env: envObj,
                 autoStart: editedAutoStart,
                 inputParams: finalInputParams,
+                healthCheckConfig:
+                  updatedHealthCheckConfig ||
+                  advancedSettingsServer.healthCheckConfig,
               };
 
               if (advancedSettingsServer.serverType !== "local") {

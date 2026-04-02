@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { MCPServer, MCPTool, Project } from "@mcp_router/shared";
+import type {
+  MCPInputParam,
+  MCPServer,
+  MCPServerHealthCheckConfig,
+  MCPTool,
+  Project,
+} from "@mcp_router/shared";
 import { useTranslation } from "react-i18next";
 import { Settings2, Check, RefreshCw, Info } from "lucide-react";
 import {
@@ -13,21 +19,61 @@ import {
 import { Button } from "@mcp_router/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@mcp_router/ui";
 import { Switch } from "@mcp_router/ui";
+import { toast } from "sonner";
 import ServerDetailsInputParams from "./ServerDetailsInputParams";
 import ServerDetailsGeneralSettings from "./ServerDetailsGeneralSettings";
+import ServerDetailsHealthPanel from "./ServerDetailsHealthPanel";
 import { useServerEditingStore } from "@/renderer/stores";
 import { usePlatformAPI } from "@/renderer/platform-api";
+
+const DEFAULT_HEALTH_CHECK_CONFIG: Required<MCPServerHealthCheckConfig> = {
+  enabled: true,
+  intervalMs: 30_000,
+  timeoutMs: 10_000,
+  failureThreshold: 2,
+  autoRecoveryEnabled: true,
+  recoveryBackoffMs: 5_000,
+  maxRecoveryAttempts: 3,
+  recoveryWindowMs: 5 * 60_000,
+};
+
+const createHealthCheckConfig = (
+  config?: MCPServerHealthCheckConfig,
+): Required<MCPServerHealthCheckConfig> => ({
+  enabled: config?.enabled !== false,
+  intervalMs: Number.isFinite(config?.intervalMs)
+    ? Math.floor(config?.intervalMs as number)
+    : DEFAULT_HEALTH_CHECK_CONFIG.intervalMs,
+  timeoutMs: Number.isFinite(config?.timeoutMs)
+    ? Math.floor(config?.timeoutMs as number)
+    : DEFAULT_HEALTH_CHECK_CONFIG.timeoutMs,
+  failureThreshold: Number.isFinite(config?.failureThreshold)
+    ? Math.floor(config?.failureThreshold as number)
+    : DEFAULT_HEALTH_CHECK_CONFIG.failureThreshold,
+  autoRecoveryEnabled: config?.autoRecoveryEnabled !== false,
+  recoveryBackoffMs: Number.isFinite(config?.recoveryBackoffMs)
+    ? Math.floor(config?.recoveryBackoffMs as number)
+    : DEFAULT_HEALTH_CHECK_CONFIG.recoveryBackoffMs,
+  maxRecoveryAttempts: Number.isFinite(config?.maxRecoveryAttempts)
+    ? Math.floor(config?.maxRecoveryAttempts as number)
+    : DEFAULT_HEALTH_CHECK_CONFIG.maxRecoveryAttempts,
+  recoveryWindowMs: Number.isFinite(config?.recoveryWindowMs)
+    ? Math.floor(config?.recoveryWindowMs as number)
+    : DEFAULT_HEALTH_CHECK_CONFIG.recoveryWindowMs,
+});
 
 interface ServerDetailsAdvancedSheetProps {
   server: MCPServer;
   handleSave: (
-    updatedInputParams?: Record<string, unknown>,
+    updatedInputParams?: Record<string, MCPInputParam>,
     editedName?: string,
     updatedToolPermissions?: Record<string, boolean>,
+    updatedHealthCheckConfig?: MCPServerHealthCheckConfig,
   ) => Promise<void>;
   projects?: Project[];
   onAssignProject?: (projectId: string | null) => Promise<void> | void;
   onOpenManageProjects?: () => void;
+  onReconnect?: () => Promise<void>;
 }
 
 const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
@@ -36,6 +82,7 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
   projects = [],
   onAssignProject,
   onOpenManageProjects,
+  onReconnect,
 }) => {
   const { t } = useTranslation();
   const platformAPI = usePlatformAPI();
@@ -117,26 +164,50 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
   >(() => deriveInitialToolPermissions(server.tools));
   const [isToolPermissionsDirty, setIsToolPermissionsDirty] = useState(false);
   const [hasAttemptedToolFetch, setHasAttemptedToolFetch] = useState(false);
+  const [healthCheckConfig, setHealthCheckConfig] = useState<
+    Required<MCPServerHealthCheckConfig>
+  >(() => createHealthCheckConfig(server.healthCheckConfig));
+  const [initialHealthCheckConfig, setInitialHealthCheckConfig] = useState<
+    Required<MCPServerHealthCheckConfig>
+  >(() => createHealthCheckConfig(server.healthCheckConfig));
+  const [isHealthConfigDirty, setIsHealthConfigDirty] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   // Initialize inputParamValues from server inputParams defaults
   useEffect(() => {
-    if (server.inputParams) {
-      const initialValues: Record<string, string> = {};
-      Object.entries(server.inputParams).forEach(([key, param]) => {
-        initialValues[key] =
-          param.default !== undefined ? String(param.default) : "";
-      });
-      setInputParamValues(initialValues);
-      setInitialInputParamValues(initialValues);
-      setIsParamsDirty(false);
+    if (!isOpen) {
+      return;
     }
-  }, [server.id, isOpen, server.inputParams]);
+
+    const initialValues: Record<string, string> = {};
+    Object.entries(server.inputParams || {}).forEach(([key, param]) => {
+      initialValues[key] =
+        param.default !== undefined ? String(param.default) : "";
+    });
+    setInputParamValues(initialValues);
+    setInitialInputParamValues(initialValues);
+    setIsParamsDirty(false);
+  }, [isOpen, server.id]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const nextHealthCheckConfig = createHealthCheckConfig(
+      server.healthCheckConfig,
+    );
+    setHealthCheckConfig(nextHealthCheckConfig);
+    setInitialHealthCheckConfig(nextHealthCheckConfig);
+    setIsHealthConfigDirty(false);
+  }, [isOpen, server.id]);
 
   // Initialize tool permissions when sheet opens or server changes
   useEffect(() => {
     if (!isOpen) {
       return;
     }
+
     const basePermissions = deriveInitialToolPermissions(server.tools);
     setTools(server.tools ?? []);
     setInitialToolPermissions(basePermissions);
@@ -148,7 +219,6 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
     deriveInitialToolPermissions,
     isOpen,
     server.id,
-    server.tools,
     setEditedToolPermissions,
   ]);
 
@@ -216,6 +286,40 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
       return updated;
     });
   };
+
+  const updateHealthCheckConfig = useCallback(
+    (updates: Partial<Required<MCPServerHealthCheckConfig>>) => {
+      setHealthCheckConfig((previous) => {
+        const updated = { ...previous, ...updates };
+        setIsHealthConfigDirty(
+          JSON.stringify(updated) !== JSON.stringify(initialHealthCheckConfig),
+        );
+        return updated;
+      });
+    },
+    [initialHealthCheckConfig],
+  );
+
+  const handleReconnectClick = useCallback(async () => {
+    if (!onReconnect) {
+      return;
+    }
+
+    setIsReconnecting(true);
+    try {
+      await onReconnect();
+      toast.success(t("serverDetails.reconnectSuccess"));
+    } catch (error) {
+      console.error("Failed to reconnect server", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("serverDetails.reconnectFailed"),
+      );
+    } finally {
+      setIsReconnecting(false);
+    }
+  }, [onReconnect, t]);
 
   const handleToolToggle = (toolName: string, enabled: boolean) => {
     setEditedToolPermissions((prev) => {
@@ -338,10 +442,13 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
     hasAttemptedToolFetch;
 
   const getTabsListClass = () => {
-    if (hasInputParams) {
-      return showToolsTab ? "grid-cols-3" : "grid-cols-2";
+    if (hasInputParams && showToolsTab) {
+      return "grid-cols-4";
     }
-    return showToolsTab ? "grid-cols-2" : "grid-cols-1";
+    if (hasInputParams || showToolsTab) {
+      return "grid-cols-3";
+    }
+    return "grid-cols-2";
   };
 
   const renderGeneralSettingsContent = () => (
@@ -372,55 +479,60 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
     />
   );
 
+  const renderHealthSettingsContent = () => (
+    <ServerDetailsHealthPanel
+      server={server}
+      healthCheckConfig={healthCheckConfig}
+      updateHealthCheckConfig={updateHealthCheckConfig}
+      onReconnect={handleReconnectClick}
+      reconnecting={isReconnecting}
+    />
+  );
+
   const renderTabsContent = () => {
-    if (hasInputParams || showToolsTab) {
-      return (
-        <Tabs
-          defaultValue={hasInputParams ? "params" : "general"}
-          className="mt-4"
-        >
-          <TabsList className={`grid w-full ${getTabsListClass()}`}>
-            {hasInputParams && (
-              <TabsTrigger value="params">
-                {t("serverDetails.inputParameters")}
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="general">
-              {t("serverDetails.generalSettings")}
-            </TabsTrigger>
-            {showToolsTab && (
-              <TabsTrigger value="tools">
-                {t("serverDetails.tools")}
-              </TabsTrigger>
-            )}
-          </TabsList>
-
-          {hasInputParams && (
-            <TabsContent value="params" className="space-y-6 mt-4">
-              <ServerDetailsInputParams
-                server={server}
-                inputParamValues={inputParamValues}
-                updateInputParam={updateInputParam}
-              />
-            </TabsContent>
-          )}
-
-          <TabsContent value="general" className="space-y-6 mt-4">
-            {renderGeneralSettingsContent()}
-          </TabsContent>
-
-          {showToolsTab && (
-            <TabsContent value="tools" className="space-y-6 mt-4">
-              {renderToolsContent()}
-            </TabsContent>
-          )}
-        </Tabs>
-      );
-    }
-
-    // No tabs needed - just show general settings directly
     return (
-      <div className="space-y-6 mt-4">{renderGeneralSettingsContent()}</div>
+      <Tabs defaultValue="general" className="mt-4">
+        <TabsList className={`grid w-full ${getTabsListClass()}`}>
+          {hasInputParams && (
+            <TabsTrigger value="params">
+              {t("serverDetails.inputParameters")}
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="general">
+            {t("serverDetails.generalSettings")}
+          </TabsTrigger>
+          <TabsTrigger value="health">
+            {t("serverDetails.healthMonitoring")}
+          </TabsTrigger>
+          {showToolsTab && (
+            <TabsTrigger value="tools">{t("serverDetails.tools")}</TabsTrigger>
+          )}
+        </TabsList>
+
+        {hasInputParams && (
+          <TabsContent value="params" className="space-y-6 mt-4">
+            <ServerDetailsInputParams
+              server={server}
+              inputParamValues={inputParamValues}
+              updateInputParam={updateInputParam}
+            />
+          </TabsContent>
+        )}
+
+        <TabsContent value="general" className="space-y-6 mt-4">
+          {renderGeneralSettingsContent()}
+        </TabsContent>
+
+        <TabsContent value="health" className="space-y-6 mt-4">
+          {renderHealthSettingsContent()}
+        </TabsContent>
+
+        {showToolsTab && (
+          <TabsContent value="tools" className="space-y-6 mt-4">
+            {renderToolsContent()}
+          </TabsContent>
+        )}
+      </Tabs>
     );
   };
 
@@ -459,12 +571,16 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
                 const toolPermissionsToSave = isToolPermissionsDirty
                   ? { ...editedToolPermissions }
                   : undefined;
+                const healthCheckConfigToSave = isHealthConfigDirty
+                  ? { ...healthCheckConfig }
+                  : server.healthCheckConfig;
 
                 // Call the parent's handleSave with inputParams and editedName
                 await handleSave(
                   updatedInputParams,
                   editedName,
                   toolPermissionsToSave,
+                  healthCheckConfigToSave,
                 );
 
                 // Reset dirty state after successful save
@@ -475,6 +591,10 @@ const ServerDetailsAdvancedSheet: React.FC<ServerDetailsAdvancedSheetProps> = ({
                 if (isToolPermissionsDirty) {
                   setInitialToolPermissions(editedToolPermissions);
                   setIsToolPermissionsDirty(false);
+                }
+                if (isHealthConfigDirty) {
+                  setInitialHealthCheckConfig(healthCheckConfig);
+                  setIsHealthConfigDirty(false);
                 }
               } catch (error) {
                 console.error("Failed to save:", error);
