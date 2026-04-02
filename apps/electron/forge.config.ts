@@ -21,7 +21,8 @@ require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const electronVersion = require("electron/package.json").version;
 const targetArch = (process.env.npm_config_target_arch as any) || process.arch;
-const targetPlatform = process.env.npm_config_target_platform || process.platform;
+const targetPlatform =
+  process.env.npm_config_target_platform || process.platform;
 const isMac = process.platform === "darwin";
 const hasSignIdentity = !!process.env.PUBLIC_IDENTIFIER;
 const hasNotarizeCreds = !!(
@@ -29,6 +30,9 @@ const hasNotarizeCreds = !!(
   process.env.APPLE_API_KEY_ID &&
   process.env.APPLE_API_ISSUER
 );
+const githubReleaseDraft = process.env.GITHUB_RELEASE_DRAFT === "true";
+const githubReleasePrerelease =
+  process.env.GITHUB_RELEASE_PRERELEASE === "true";
 const appDescription =
   "Effortlessly manage your MCP servers with MCP Router. MCP Router provides a user-friendly interface for organizing and operating MCP servers.";
 const linuxDesktopFileName = "mcp-router.desktop";
@@ -137,18 +141,20 @@ const config: ForgeConfig = {
     // Support both Intel and Apple Silicon architectures - use target arch from env
     arch: targetArch,
     // Only sign/notarize on macOS when credentials are available (CI-safe)
-    osxSign: isMac && hasSignIdentity
-      ? {
-          identity: process.env.PUBLIC_IDENTIFIER,
-        }
-      : undefined,
-    osxNotarize: isMac && hasNotarizeCreds
-      ? {
-          appleApiKey: process.env.APPLE_API_KEY || "",
-          appleApiKeyId: process.env.APPLE_API_KEY_ID || "",
-          appleApiIssuer: process.env.APPLE_API_ISSUER || "",
-        }
-      : undefined,
+    osxSign:
+      isMac && hasSignIdentity
+        ? {
+            identity: process.env.PUBLIC_IDENTIFIER,
+          }
+        : undefined,
+    osxNotarize:
+      isMac && hasNotarizeCreds
+        ? {
+            appleApiKey: process.env.APPLE_API_KEY || "",
+            appleApiKeyId: process.env.APPLE_API_KEY_ID || "",
+            appleApiIssuer: process.env.APPLE_API_ISSUER || "",
+          }
+        : undefined,
   },
   rebuildConfig: {
     // Force rebuild native modules for the target architecture
@@ -232,8 +238,8 @@ const config: ForgeConfig = {
           owner: "mcp-router",
           name: "mcp-router",
         },
-        prerelease: true,
-        draft: true,
+        prerelease: githubReleasePrerelease,
+        draft: githubReleaseDraft,
       },
     },
   ],
